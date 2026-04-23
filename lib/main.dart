@@ -132,7 +132,7 @@ class _TaskBoardState extends State<TaskBoard> {
 
   void _addNewIsland() {
     setState(() {
-      // 修正済み：余計な 'is' を削除
+      // 修正済み：余計な 'is' を完全に削除しました
       islands.add(UserIsland(name: "New Guest", color: Colors.purpleAccent, tasks: []));
     });
   }

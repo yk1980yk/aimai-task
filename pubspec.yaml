@@ -25,6 +25,9 @@ dependencies:
   googleapis: ^16.0.0
   url_launcher: ^6.3.2
 
+  # タスク完了時の紙吹雪演出
+  confetti: ^0.8.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'dart:async'; 
-import 'dart:html' as html; 
+import 'package:url_launcher/url_launcher.dart';
 import 'terms_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -97,7 +97,7 @@ class _LoginPageState extends State<LoginPage> {
               Column(
                 children: [
                   const Text("From a place to manage, to a 'Market'.", style: TextStyle(color: Colors.grey, fontSize: 13, fontWeight: FontWeight.bold)),
-                  Text("管理する場所から、助け合う「市場」へ。", style: TextStyle(color: Colors.grey.withOpacity(0.7), fontSize: 10)),
+                  Text("管理する場所から、助け合う「市場」へ。", style: TextStyle(color: Colors.grey.withValues(alpha: 0.7), fontSize: 10)),
                 ],
               ),
               const SizedBox(height: 30),
@@ -113,7 +113,7 @@ class _LoginPageState extends State<LoginPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text("Agree to Terms and Privacy Policy", style: TextStyle(decoration: TextDecoration.underline, fontSize: 12, color: Colors.blueGrey, fontWeight: FontWeight.bold)),
-                            Text("利用規約とプライバシーポリシーに同意する", style: TextStyle(fontSize: 9, color: Colors.blueGrey.withOpacity(0.7))),
+                            Text("利用規約とプライバシーポリシーに同意する", style: TextStyle(fontSize: 9, color: Colors.blueGrey.withValues(alpha: 0.7))),
                           ],
                         ),
                       ),
@@ -121,11 +121,11 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 10),
                   GestureDetector(
-                    onTap: () => html.window.open('tokushoho.html', 'new_tab'),
+                    onTap: () => launchUrl(Uri.parse('tokushoho.html'), webOnlyWindowName: '_blank'),
                     child: Column(
                       children: [
                         const Text("Legal Compliance", style: TextStyle(decoration: TextDecoration.underline, fontSize: 11, color: Colors.blueGrey, fontStyle: FontStyle.italic)),
-                        Text("特定商取引法に基づく表記", style: TextStyle(fontSize: 8, color: Colors.blueGrey.withOpacity(0.7))),
+                        Text("特定商取引法に基づく表記", style: TextStyle(fontSize: 8, color: Colors.blueGrey.withValues(alpha: 0.7))),
                       ],
                     ),
                   ),
@@ -163,10 +163,10 @@ class _LoginPageState extends State<LoginPage> {
           Text(emoji, style: const TextStyle(fontSize: 50)),
           const SizedBox(height: 15),
           Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1B263B))),
-          Text(subTitle, style: TextStyle(fontSize: 12, color: const Color(0xFF1B263B).withOpacity(0.6))),
+          Text(subTitle, style: TextStyle(fontSize: 12, color: const Color(0xFF1B263B).withValues(alpha: 0.6))),
           const SizedBox(height: 12),
           Text(desc, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: Colors.blueGrey, fontWeight: FontWeight.bold)),
-          Text(subDesc, textAlign: TextAlign.center, style: TextStyle(fontSize: 10, color: Colors.blueGrey.withOpacity(0.6))),
+          Text(subDesc, textAlign: TextAlign.center, style: TextStyle(fontSize: 10, color: Colors.blueGrey.withValues(alpha: 0.6))),
         ],
       ),
     );

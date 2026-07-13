@@ -1,135 +1,171 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart'; 
+import 'package:confetti/confetti.dart'; 
 import 'task_model.dart';
+import 'workspace_theme.dart';
 
-class ImprovedTaskBoardPage extends StatelessWidget {
+class ImprovedTaskBoardPage extends StatefulWidget {
   final String groupId;
   final String groupName;
   const ImprovedTaskBoardPage({super.key, required this.groupId, required this.groupName});
+
+  @override
+  State<ImprovedTaskBoardPage> createState() => _ImprovedTaskBoardPageState();
+}
+
+class _ImprovedTaskBoardPageState extends State<ImprovedTaskBoardPage> {
+  late ConfettiController _confettiController;
+
+  @override
+  void initState() {
+    super.initState();
+    _confettiController = ConfettiController(duration: const Duration(seconds: 1, milliseconds: 500));
+  }
+
+  @override
+  void dispose() {
+    _confettiController.dispose(); 
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 600;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F9),
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.white,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF1B263B)), 
-          onPressed: () => Navigator.pop(context)
-        ),
-        title: Text(groupName, style: TextStyle(color: const Color(0xFF1B263B), fontWeight: FontWeight.bold, fontSize: isMobile ? 16 : 18)),
-        actions: [ _buildTeamScoreChip(isMobile) ],
-      ),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('groups').doc(groupId).snapshots(),
-        builder: (context, groupSnap) {
-          if (!groupSnap.hasData) return const Center(child: CircularProgressIndicator());
-          final groupData = groupSnap.data!.data() as Map<String, dynamic>? ?? {};
-          final sharedTitle = groupData['sharedTitle'] ?? '🌊 Shared Market';
-          final doneTitle = groupData['doneTitle'] ?? '✨ Treasure Box';
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('groups').doc(widget.groupId).snapshots(),
+      builder: (context, groupSnap) {
+        if (!groupSnap.hasData) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        final groupData = groupSnap.data!.data() as Map<String, dynamic>? ?? {};
+        final theme = WorkspaceTheme.of(groupData['type'] as String?);
+        final sharedTitle = groupData['sharedTitle'] ?? theme.defaultSharedTitle;
+        final doneTitle = groupData['doneTitle'] ?? theme.defaultDoneTitle;
 
-          return StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('groups').doc(groupId).collection('columns').orderBy('createdAt').snapshots(),
-            builder: (context, colSnap) {
-              if (!colSnap.hasData) return const Center(child: CircularProgressIndicator());
-              final columns = colSnap.data!.docs;
+        return Scaffold(
+          backgroundColor: theme.background,
+          appBar: AppBar(
+            elevation: 0,
+            backgroundColor: Colors.white,
+            leading: IconButton(
+              icon: Icon(Icons.arrow_back, color: theme.primary), 
+              onPressed: () => Navigator.pop(context)
+            ),
+            title: Text(widget.groupName, style: TextStyle(color: theme.primary, fontWeight: FontWeight.bold, fontSize: isMobile ? 16 : 18)),
+            actions: [ _buildTeamScoreChip(context, theme, isMobile) ],
+          ),
+          body: Stack(
+            children: [
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('groups').doc(widget.groupId).collection('columns').orderBy('createdAt').snapshots(),
+                builder: (context, colSnap) {
+                  if (!colSnap.hasData) return const Center(child: CircularProgressIndicator());
+                  final columns = colSnap.data!.docs;
 
-              return Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: ListView(
-                  children: [
-                    // クイックチュートリアルガイド
-                    _buildQuickTutorial(context, isMobile),
-                    
-                    const SizedBox(height: 16),
-                    
-                    // ボードメインコンテンツ（左・中・右の完全分離独立レイアウト）
-                    isMobile
-                        ? Column(
-                            children: [
-                              _buildDropColumn(context, sharedTitle, 'todo', Colors.blueGrey, 'sharedTitle', isMobile),
-                              ...columns.map((col) {
-                                final data = col.data() as Map<String, dynamic>;
-                                return _buildDropColumn(context, "${data['name']} (${data['personalPoints'] ?? 0} pt)", col.id, Colors.teal, 'columnName', isMobile, colId: col.id, currentPoints: data['personalPoints'] ?? 0);
-                              }),
-                              _buildAddColumnButton(context, isMobile),
-                              _buildDropColumn(context, doneTitle, 'done', Colors.orange, 'doneTitle', isMobile),
-                            ],
-                          )
-                        : Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // 【1. 左端ブロック】 Shared Market 専用（他のコラムが絶対に下に回り込まないように完全固定）
-                              SizedBox(width: 280, child: _buildDropColumn(context, sharedTitle, 'todo', Colors.blueGrey, 'sharedTitle', isMobile)),
-                              
-                              const SizedBox(width: 16),
-                              
-                              // 【2. 中央ブロック】 メンバー群 ＋ 追加ボタン（ここだけが画面幅に合わせて自動で折り返します）
-                              Expanded(
-                                child: Wrap(
-                                  alignment: WrapAlignment.start,
-                                  spacing: 16,
-                                  runSpacing: 16,
-                                  children: [
-                                    ...columns.map((col) {
-                                      final data = col.data() as Map<String, dynamic>;
-                                      return SizedBox(width: 280, child: _buildDropColumn(context, "${data['name']} (${data['personalPoints'] ?? 0} pt)", col.id, Colors.teal, 'columnName', isMobile, colId: col.id, currentPoints: data['personalPoints'] ?? 0));
-                                    }),
-                                    _buildAddColumnButton(context, isMobile),
-                                  ],
-                                ),
+                  return Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: ListView(
+                      children: [
+                        _buildQuickTutorial(context, theme, isMobile),
+                        const SizedBox(height: 16),
+                        
+                        isMobile
+                            ? Column(
+                                children: [
+                                  _buildDropColumn(context, sharedTitle, 'todo', theme.accent, 'sharedTitle', isMobile, boardTheme: theme),
+                                  ...columns.map((col) {
+                                    final data = col.data() as Map<String, dynamic>;
+                                    return _buildDropColumn(context, "${data['name']} (${data['personalPoints'] ?? 0} ${theme.pointUnitShort})", col.id, theme.primary, 'columnName', isMobile, colId: col.id, currentPoints: data['personalPoints'] ?? 0, boardTheme: theme);
+                                  }),
+                                  _buildAddColumnButton(context, isMobile),
+                                  _buildDropColumn(context, doneTitle, 'done', Colors.orange, 'doneTitle', isMobile, boardTheme: theme),
+                                ],
+                              )
+                            : Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  SizedBox(width: 280, child: _buildDropColumn(context, sharedTitle, 'todo', theme.accent, 'sharedTitle', isMobile, boardTheme: theme)),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Wrap(
+                                      alignment: WrapAlignment.start,
+                                      spacing: 16,
+                                      runSpacing: 16,
+                                      children: [
+                                        ...columns.map((col) {
+                                          final data = col.data() as Map<String, dynamic>;
+                                          return SizedBox(width: 280, child: _buildDropColumn(context, "${data['name']} (${data['personalPoints'] ?? 0} ${theme.pointUnitShort})", col.id, theme.primary, 'columnName', isMobile, colId: col.id, currentPoints: data['personalPoints'] ?? 0, boardTheme: theme));
+                                        }),
+                                        _buildAddColumnButton(context, isMobile),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  SizedBox(
+                                    width: 280, 
+                                    child: _buildDropColumn(context, doneTitle, 'done', Colors.orange, 'doneTitle', isMobile, boardTheme: theme)
+                                  ),
+                                ],
                               ),
-                              
-                              const SizedBox(width: 16),
-                              
-                              // 【3. 右端ブロック】 一番右に常駐固定される Treasure Box
-                              SizedBox(
-                                width: 280, 
-                                child: _buildDropColumn(context, doneTitle, 'done', Colors.orange, 'doneTitle', isMobile)
-                              ),
-                            ],
-                          ),
-                  ],
+                      ],
+                    ),
+                  );
+                },
+              ),
+              
+              Align(
+                alignment: Alignment.topCenter,
+                child: ConfettiWidget(
+                  confettiController: _confettiController,
+                  blastDirectionality: BlastDirectionality.explosive, 
+                  shouldLoop: false,
+                  colors: const [
+                    Colors.orange,
+                    Colors.teal,
+                    Colors.blue,
+                    Colors.yellow,
+                    Colors.pink,
+                    Colors.green,
+                  ], 
+                  numberOfParticles: 35, 
+                  gravity: 0.25, 
                 ),
-              );
-            },
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF1B263B), 
-        child: const Icon(Icons.add, color: Colors.white), 
-        onPressed: () => _showAddTaskDialog(context)
-      ),
+              ),
+            ],
+          ),
+          floatingActionButton: FloatingActionButton(
+            backgroundColor: theme.primary, 
+            child: const Icon(Icons.add, color: Colors.white), 
+            onPressed: () => _showAddTaskDialog(context, theme)
+          ),
+        );
+      },
     );
   }
 
-  // --- チュートリアルUIの追加モジュール ---
-  Widget _buildQuickTutorial(BuildContext context, bool isMobile) {
+  // --- チュートリアルUIの追加モジュール（Family/Workでテキスト・色を出し分け） ---
+  Widget _buildQuickTutorial(BuildContext context, WorkspaceTheme theme, bool isMobile) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.teal.shade100, width: 1.5),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 6, offset: const Offset(0, 3))],
+        border: Border.all(color: theme.primary.withValues(alpha: 0.15), width: 1.5),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 6, offset: const Offset(0, 3))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.auto_awesome, color: Colors.teal.shade400, size: 18),
+              Icon(Icons.auto_awesome, color: theme.primary, size: 18),
               const SizedBox(width: 8),
-              const Text(
-                "How to play marchez 🚀 (クイックガイド)",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1B263B)),
+              Text(
+                theme.tutorialHeader,
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: theme.primary),
               ),
             ],
           ),
@@ -137,21 +173,21 @@ class ImprovedTaskBoardPage extends StatelessWidget {
           isMobile
               ? Column(
                   children: [
-                    _buildStepItem("1. DROP 🌊", "Put unassigned chores into 'Shared Market'\n(誰の担当でもない雑務をここへ)", Colors.blueGrey),
+                    _buildStepItem(theme.step1Title, theme.step1Desc, theme.accent),
                     const Icon(Icons.arrow_downward, size: 14, color: Colors.grey),
-                    _buildStepItem("2. PICK 🤝", "Drag tasks to your folder when you are free\n(手が空いた人が自分のフォルダへドラッグ)", Colors.teal),
+                    _buildStepItem(theme.step2Title, theme.step2Desc, theme.primary),
                     const Icon(Icons.arrow_downward, size: 14, color: Colors.grey),
-                    _buildStepItem("3. WIN ✨", "Finish tasks to earn Help Points in 'Treasure Box'\n(完了すると宝箱にポイントが貯まります)", Colors.orange),
+                    _buildStepItem(theme.step3Title, theme.step3Desc, Colors.orange),
                   ],
                 )
               : Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Expanded(child: _buildStepItem("1. DROP 🌊", "Put unassigned chores into 'Shared Market'\n(誰の担当でもない雑務をここへ)", Colors.blueGrey)),
+                    Expanded(child: _buildStepItem(theme.step1Title, theme.step1Desc, theme.accent)),
                     const Icon(Icons.arrow_forward, size: 14, color: Colors.grey),
-                    Expanded(child: _buildStepItem("2. PICK 🤝", "Drag tasks to your folder when you are free\n(手が空いた人が自分のフォルダへドラッグ)", Colors.teal)),
+                    Expanded(child: _buildStepItem(theme.step2Title, theme.step2Desc, theme.primary)),
                     const Icon(Icons.arrow_forward, size: 14, color: Colors.grey),
-                    Expanded(child: _buildStepItem("3. WIN ✨", "Finish tasks to earn Help Points in 'Treasure Box'\n(完了すると宝箱にポイントが貯まります)", Colors.orange)),
+                    Expanded(child: _buildStepItem(theme.step3Title, theme.step3Desc, Colors.orange)),
                   ],
                 ),
         ],
@@ -176,9 +212,9 @@ class ImprovedTaskBoardPage extends StatelessWidget {
     );
   }
 
-  Widget _buildTeamScoreChip(bool isMobile) {
+  Widget _buildTeamScoreChip(BuildContext context, WorkspaceTheme theme, bool isMobile) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('groups').doc(groupId).collection('tasks').where('status', isEqualTo: 'done').snapshots(),
+      stream: FirebaseFirestore.instance.collection('groups').doc(widget.groupId).collection('tasks').where('status', isEqualTo: 'done').snapshots(),
       builder: (context, snapshot) {
         int total = 0;
         if (snapshot.hasData) {
@@ -189,10 +225,21 @@ class ImprovedTaskBoardPage extends StatelessWidget {
         return Center(
           child: Padding(
             padding: EdgeInsets.only(right: isMobile ? 8 : 16),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.orange, width: 1.5)),
-              child: Text("TOTAL: $total", style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: isMobile ? 11 : 13)),
+            child: InkWell(
+              onTap: () => _showTeamReportDialog(context, theme, total),
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.orange, width: 1.5)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.bar_chart, color: Colors.orange, size: 16),
+                    const SizedBox(width: 4),
+                    Text("TOTAL: $total ${theme.pointUnitShort}", style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: isMobile ? 11 : 13)),
+                  ],
+                ),
+              ),
             ),
           ),
         );
@@ -200,20 +247,282 @@ class ImprovedTaskBoardPage extends StatelessWidget {
     );
   }
 
-  Widget _buildDropColumn(BuildContext context, String title, String statusKey, Color themeColor, String fieldKey, bool isMobile, {String? colId, int currentPoints = 0}) {
+  void _showTeamReportDialog(BuildContext context, WorkspaceTheme theme, int totalScore) {
+    String selectedPeriod = 'this_month';
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection('groups').doc(widget.groupId).collection('columns').snapshots(),
+          builder: (context, colSnapshot) {
+            if (!colSnapshot.hasData) {
+              return const AlertDialog(content: SizedBox(height: 100, child: Center(child: CircularProgressIndicator())));
+            }
+
+            return StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance.collection('groups').doc(widget.groupId).collection('tasks').where('status', isEqualTo: 'done').snapshots(),
+              builder: (context, taskSnapshot) {
+                if (!taskSnapshot.hasData) {
+                  return const AlertDialog(content: SizedBox(height: 100, child: Center(child: CircularProgressIndicator())));
+                }
+
+                final now = DateTime.now();
+                final doneTasks = taskSnapshot.data!.docs;
+
+                Map<String, Map<String, dynamic>> memberStats = {};
+                int periodTotalScore = 0;
+
+                for (var col in colSnapshot.data!.docs) {
+                  final colData = col.data() as Map<String, dynamic>;
+                  final colId = col.id;
+                  memberStats[colId] = {
+                    'name': colData['name'] ?? 'No Name',
+                    'points': 0,
+                    'quickCount': 0,
+                    'normalCount': 0,
+                    'importantCount': 0,
+                  };
+                }
+
+                for (var taskDoc in doneTasks) {
+                  final task = taskDoc.data() as Map<String, dynamic>;
+                  final createdAtTimestamp = task['createdAt'] as Timestamp?;
+                  
+                  // 作成日時がまだFirestore上で確定していない暫定状態のタスクは現在時刻として扱う安全ロジック
+                  final taskDate = createdAtTimestamp != null ? createdAtTimestamp.toDate() : DateTime.now();
+
+                  if (selectedPeriod == 'this_month') {
+                    if (taskDate.year != now.year || taskDate.month != now.month) {
+                      continue;
+                    }
+                  }
+
+                  final String? fromColId = task['fromColId']; 
+                  final int pts = task['points'] as int? ?? 0;
+                  final String priority = task['priority'] ?? 'Normal';
+
+                  // 💡 fromColId が割り振られている有効なタスクのポイントのみを、この期間の総スコアに合算します
+                  if (fromColId != null && memberStats.containsKey(fromColId)) {
+                    periodTotalScore += pts;
+                    memberStats[fromColId]!['points'] = (memberStats[fromColId]!['points'] as int) + pts;
+                    if (priority == 'Quick') {
+                      memberStats[fromColId]!['quickCount'] = (memberStats[fromColId]!['quickCount'] as int) + 1;
+                    } else if (priority == 'Important') {
+                      memberStats[fromColId]!['importantCount'] = (memberStats[fromColId]!['importantCount'] as int) + 1;
+                    } else {
+                      memberStats[fromColId]!['normalCount'] = (memberStats[fromColId]!['normalCount'] as int) + 1;
+                    }
+                  }
+                }
+
+                final memberList = memberStats.values.toList();
+                memberList.sort((a, b) => (b['points'] as int).compareTo(a['points'] as int));
+
+                int maxPoints = memberList.isNotEmpty ? memberList.first['points'] as int : 0;
+
+                return AlertDialog(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  title: const Row(
+                    children: [
+                      Icon(Icons.stars, color: Colors.orange),
+                      SizedBox(width: 8),
+                      Text("🏆 Contribution Report", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                    ],
+                  ),
+                  content: SizedBox(
+                    width: 360,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: selectedPeriod == 'this_month' ? Colors.orange : Colors.grey.shade200,
+                                  foregroundColor: selectedPeriod == 'this_month' ? Colors.white : Colors.black87,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                onPressed: () => setDialogState(() => selectedPeriod = 'this_month'),
+                                child: const Text("今月 (This Month)", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: selectedPeriod == 'all' ? Colors.orange : Colors.grey.shade200,
+                                  foregroundColor: selectedPeriod == 'all' ? Colors.white : Colors.black87,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                onPressed: () => setDialogState(() => selectedPeriod = 'all'),
+                                child: const Text("全期間 (All Time)", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.orange.withValues(alpha: 0.2)),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(selectedPeriod == 'this_month' ? "今月のチーム総ポイント" : "全期間のチーム総ポイント", style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                              const SizedBox(height: 4),
+                              Text("$periodTotalScore ${theme.pointUnitShort}", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.orange)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text("👑 Member Contribution/メンバー貢献度", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.primary)),
+                        const SizedBox(height: 8),
+                        
+                        if (memberList.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 20),
+                            child: Center(child: Text("No members found.", style: TextStyle(color: Colors.grey, fontSize: 12))),
+                          )
+                        else
+                          Flexible(
+                            child: ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: memberList.length,
+                              itemBuilder: (context, index) {
+                                final member = memberList[index];
+                                final name = member['name'] as String;
+                                final points = member['points'] as int;
+                                final qCount = member['quickCount'] as int;
+                                final nCount = member['normalCount'] as int;
+                                final iCount = member['importantCount'] as int;
+
+                                Widget medalWidget;
+                                if (index == 0 && points > 0) {
+                                  medalWidget = const Text("🥇", style: TextStyle(fontSize: 18));
+                                } else if (index == 1 && points > 0) {
+                                  medalWidget = const Text("🥈", style: TextStyle(fontSize: 18));
+                                } else if (index == 2 && points > 0) {
+                                  medalWidget = const Text("🥉", style: TextStyle(fontSize: 18));
+                                } else {
+                                  medalWidget = Text("  ${index + 1} ", style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold));
+                                }
+
+                                bool isMVP = points > 0 && points == maxPoints;
+
+                                return Container(
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: isMVP ? Colors.orange.withValues(alpha: 0.5) : Colors.grey.shade100, width: isMVP ? 1.5 : 1.0),
+                                    boxShadow: isMVP ? [BoxShadow(color: Colors.orange.withValues(alpha: 0.1), blurRadius: 4, offset: const Offset(0, 2))] : null,
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          medalWidget,
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Row(
+                                              children: [
+                                                Text(name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: theme.primary)),
+                                                if (isMVP) ...[
+                                                  const SizedBox(width: 6),
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                    decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(6)),
+                                                    child: const Text("👑 MVP", style: TextStyle(fontSize: 8, color: Colors.white, fontWeight: FontWeight.bold)),
+                                                  ),
+                                                ]
+                                              ],
+                                            ),
+                                          ),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                            decoration: BoxDecoration(color: Colors.teal.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12)),
+                                            child: Text("$points ${theme.pointUnitShort}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.teal)),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.start,
+                                        children: [
+                                          const SizedBox(width: 26),
+                                          _buildPriorityBadge("🟢 ${theme.priorityLabels['Quick']}: $qCount"),
+                                          const SizedBox(width: 8),
+                                          _buildPriorityBadge("🟡 ${theme.priorityLabels['Normal']}: $nCount"),
+                                          const SizedBox(width: 8),
+                                          _buildPriorityBadge("🔴 ${theme.priorityLabels['Important']}: $iCount"),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text("Close", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPriorityBadge(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(4)),
+      child: Text(label, style: const TextStyle(fontSize: 9, color: Colors.black54, fontWeight: FontWeight.w500)),
+    );
+  }
+
+  Widget _buildDropColumn(BuildContext context, String title, String statusKey, Color themeColor, String fieldKey, bool isMobile, {String? colId, int currentPoints = 0, WorkspaceTheme? boardTheme}) {
+    final theme = boardTheme ?? WorkspaceTheme.work;
     return Container(
       margin: isMobile ? const EdgeInsets.only(bottom: 16) : EdgeInsets.zero,
       decoration: BoxDecoration(
         color: Colors.white, 
         borderRadius: BorderRadius.circular(16), 
-        border: Border.all(color: themeColor.withOpacity(0.2)), 
+        border: Border.all(color: themeColor.withValues(alpha: 0.2)), 
         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))]
       ),
       child: DragTarget<Map<String, dynamic>>(
-        onAccept: (dragData) async {
-          await FirebaseFirestore.instance.collection('groups').doc(groupId).collection('tasks').doc(dragData['taskId']).update({'status': statusKey});
-          if (statusKey == 'done' && dragData['fromColId'] != null) {
-            await FirebaseFirestore.instance.collection('groups').doc(groupId).collection('columns').doc(dragData['fromColId']).update({'personalPoints': FieldValue.increment(dragData['taskPoints'])});
+        onAcceptWithDetails: (details) async {
+          final dragData = details.data;
+          // 💡 もしタスクが「すでに誰かのフォルダ（colId）に所属していた」状態で宝箱へドロップされた場合のみ、
+          // ドラッグデータ内の fromColId を優先し、Shared BOXからの直行等の場合は新しいコラムID（nullまたは現在のcolId）を割り当てます。
+          final resolvedFromColId = dragData['fromColId'] ?? colId;
+
+          await FirebaseFirestore.instance.collection('groups').doc(widget.groupId).collection('tasks').doc(dragData['taskId']).update({
+            'status': statusKey,
+            'fromColId': resolvedFromColId,
+          });
+
+          if (statusKey == 'done' && resolvedFromColId != null) {
+            _confettiController.play();
+            await FirebaseFirestore.instance.collection('groups').doc(widget.groupId).collection('columns').doc(resolvedFromColId).update({'personalPoints': FieldValue.increment(dragData['taskPoints'])});
           }
         },
         builder: (context, _, __) => Column(
@@ -235,20 +544,21 @@ class ImprovedTaskBoardPage extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _buildTaskList(statusKey, colId, isMobile),
+                  // 💡 colId（現在のフォルダID）をしっかりとタスクリストへパスするように修正！
+                  _buildTaskList(statusKey, colId, isMobile, theme),
                   if (statusKey == 'todo')
                     Padding(
                       padding: const EdgeInsets.only(top: 12, bottom: 4, left: 10, right: 10),
                       child: TextButton.icon(
-                        onPressed: () => _showAddTaskDialog(context),
-                        icon: const Icon(Icons.add, size: 16, color: Colors.blueGrey),
-                        label: const Text(
+                        onPressed: () => _showAddTaskDialog(context, theme),
+                        icon: Icon(Icons.add, size: 16, color: theme.primary),
+                        label: Text(
                           "Add a task (タスクを追加)", 
-                          style: TextStyle(color: Colors.blueGrey, fontSize: 12, fontWeight: FontWeight.bold)
+                          style: TextStyle(color: theme.primary, fontSize: 12, fontWeight: FontWeight.bold)
                         ),
                         style: TextButton.styleFrom(
                           minimumSize: const Size(double.infinity, 38),
-                          backgroundColor: Colors.blueGrey.withOpacity(0.05),
+                          backgroundColor: theme.primary.withValues(alpha: 0.05),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
                       ),
@@ -262,9 +572,9 @@ class ImprovedTaskBoardPage extends StatelessWidget {
     );
   }
 
-  Widget _buildTaskList(String statusKey, String? currentColId, bool isMobile) {
+  Widget _buildTaskList(String statusKey, String? currentColId, bool isMobile, WorkspaceTheme theme) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('groups').doc(groupId).collection('tasks').where('status', isEqualTo: statusKey).snapshots(),
+      stream: FirebaseFirestore.instance.collection('groups').doc(widget.groupId).collection('tasks').where('status', isEqualTo: statusKey).snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const SizedBox();
         final docs = snapshot.data!.docs;
@@ -278,10 +588,15 @@ class ImprovedTaskBoardPage extends StatelessWidget {
           itemCount: docs.length,
           itemBuilder: (context, index) {
             final task = TaskModel.fromSnapshot(docs[index]);
+            
+            // 💡 既存のFirestoreデータにすでに 'fromColId' が書き込まれている場合はそれを使い、
+            // まだ無い（新しくドラッグされた）場合は現在配置されているフォルダのID（currentColId）をDraggableデータに乗せて引き渡します。
+            final String? taskFromColId = (docs[index].data() as Map<String, dynamic>?)?['fromColId'] ?? currentColId;
+
             return Draggable<Map<String, dynamic>>(
-              data: {'taskId': task.id, 'fromColId': currentColId, 'taskPoints': task.points},
+              data: {'taskId': task.id, 'fromColId': taskFromColId, 'taskPoints': task.points},
               feedback: Material(elevation: 4, child: Container(width: 200, padding: const EdgeInsets.all(8), color: Colors.white, child: Text(task.title))),
-              child: _buildTaskCard(task, docs[index].reference, statusKey, isMobile),
+              child: _buildTaskCard(task, docs[index].reference, statusKey, isMobile, theme),
             );
           },
         );
@@ -289,8 +604,9 @@ class ImprovedTaskBoardPage extends StatelessWidget {
     );
   }
 
-  Widget _buildTaskCard(TaskModel task, DocumentReference ref, String status, bool isMobile) {
+  Widget _buildTaskCard(TaskModel task, DocumentReference ref, String status, bool isMobile, WorkspaceTheme theme) {
     Color attrColor = task.priority == 'Quick' ? Colors.green : (task.priority == 'Important' ? Colors.red : Colors.orange);
+    String priorityLabel = theme.priorityLabels[task.priority] ?? task.priority;
     String dateStr = task.dueDate != null ? DateFormat('MM/dd').format(task.dueDate!) : "";
 
     return Container(
@@ -313,7 +629,7 @@ class ImprovedTaskBoardPage extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(child: Text(task.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
-                Text("${task.points}pt", style: const TextStyle(fontSize: 10, color: Colors.orange, fontWeight: FontWeight.bold)),
+                Text("${task.points}${theme.pointUnitShort}", style: const TextStyle(fontSize: 10, color: Colors.orange, fontWeight: FontWeight.bold)),
               ],
             ),
             const SizedBox(height: 4),
@@ -321,7 +637,7 @@ class ImprovedTaskBoardPage extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Row(children: [
-                  Text(task.priority, style: TextStyle(fontSize: 8, color: attrColor, fontWeight: FontWeight.bold)),
+                  Text(priorityLabel, style: TextStyle(fontSize: 8, color: attrColor, fontWeight: FontWeight.bold)),
                   if (dateStr.isNotEmpty) ...[
                     const SizedBox(width: 8), 
                     const Icon(Icons.calendar_month, size: 10, color: Colors.grey), 
@@ -350,7 +666,7 @@ class ImprovedTaskBoardPage extends StatelessWidget {
         width: isMobile ? double.infinity : 280, 
         height: 60,            
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.4), 
+          color: Colors.white.withValues(alpha: 0.4), 
           borderRadius: BorderRadius.circular(16), 
           border: Border.all(color: Colors.grey.shade300, style: BorderStyle.solid, width: 1.5)
         ),
@@ -377,7 +693,7 @@ class ImprovedTaskBoardPage extends StatelessWidget {
         TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
         ElevatedButton(onPressed: () async {
           if (ctrl.text.isNotEmpty) {
-            await FirebaseFirestore.instance.collection('groups').doc(groupId).collection('columns').add({'name': ctrl.text, 'personalPoints': 0, 'createdAt': FieldValue.serverTimestamp()});
+            await FirebaseFirestore.instance.collection('groups').doc(widget.groupId).collection('columns').add({'name': ctrl.text, 'personalPoints': 0, 'createdAt': FieldValue.serverTimestamp()});
             if (context.mounted) Navigator.pop(context);
           }
         }, child: const Text("Add")),
@@ -394,9 +710,9 @@ class ImprovedTaskBoardPage extends StatelessWidget {
         TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
         ElevatedButton(onPressed: () async {
           if (colId != null) {
-            await FirebaseFirestore.instance.collection('groups').doc(groupId).collection('columns').doc(colId).update({'name': ctrl.text});
+            await FirebaseFirestore.instance.collection('groups').doc(widget.groupId).collection('columns').doc(colId).update({'name': ctrl.text});
           } else {
-            await FirebaseFirestore.instance.collection('groups').doc(groupId).update({key: ctrl.text});
+            await FirebaseFirestore.instance.collection('groups').doc(widget.groupId).update({key: ctrl.text});
           }
           if (context.mounted) Navigator.pop(context);
         }, child: const Text("Update")),
@@ -406,7 +722,7 @@ class ImprovedTaskBoardPage extends StatelessWidget {
 
   void _deleteColumn(String colId) => FirebaseFirestore.instance.collection('columns').doc(colId).delete();
 
-  void _showAddTaskDialog(BuildContext context) {
+  void _showAddTaskDialog(BuildContext context, WorkspaceTheme theme) {
     final ctrlTitle = TextEditingController();
     final ctrlMemo = TextEditingController();
     int pts = 1; double prog = 0.0; String attr = 'Normal';
@@ -418,11 +734,16 @@ class ImprovedTaskBoardPage extends StatelessWidget {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           TextField(controller: ctrlTitle, decoration: const InputDecoration(hintText: "What to do?")),
           DropdownButtonFormField<String>(
-            value: attr, items: const [DropdownMenuItem(value: 'Quick', child: Text("🟢 Quick")), DropdownMenuItem(value: 'Normal', child: Text("🟡 Normal")), DropdownMenuItem(value: 'Important', child: Text("🔴 Important"))],
+            initialValue: attr,
+            items: [
+              DropdownMenuItem(value: 'Quick', child: Text("🟢 ${theme.priorityLabels['Quick']}")),
+              DropdownMenuItem(value: 'Normal', child: Text("🟡 ${theme.priorityLabels['Normal']}")),
+              DropdownMenuItem(value: 'Important', child: Text("🔴 ${theme.priorityLabels['Important']}")),
+            ],
             onChanged: (v) => setState(() => attr = v!),
           ),
           DropdownButtonFormField<int>(
-            value: pts, items: [1,2,3,5,10].map((e)=>DropdownMenuItem(value: e, child: Text("$e pt"))).toList(),
+            initialValue: pts, items: [1,2,3,5,10].map((e)=>DropdownMenuItem(value: e, child: Text("$e ${theme.pointUnitShort}"))).toList(),
             onChanged: (v)=>setState(()=>pts=v!),
           ),
           const SizedBox(height: 10),
@@ -442,7 +763,7 @@ class ImprovedTaskBoardPage extends StatelessWidget {
         TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")), 
         ElevatedButton(onPressed: () async {
           if (ctrlTitle.text.trim().isEmpty) return;
-          await FirebaseFirestore.instance.collection('groups').doc(groupId).collection('tasks').add({
+          await FirebaseFirestore.instance.collection('groups').doc(widget.groupId).collection('tasks').add({
             'title': ctrlTitle.text.trim(), 
             'memo': ctrlMemo.text.trim(), 
             'status': 'todo', 

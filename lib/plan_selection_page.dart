@@ -105,7 +105,7 @@ class PlanSelectionPage extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isRecommended ? 0.1 : 0.05), 
+            color: Colors.black.withValues(alpha: isRecommended ? 0.1 : 0.05), 
             blurRadius: 20, 
             offset: const Offset(0, 10)
           ),

@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'task_board_page.dart'; 
 import 'plan_selection_page.dart';
+import 'workspace_theme.dart';
 
 class WorkspaceSelectPage extends StatefulWidget {
   const WorkspaceSelectPage({super.key});
@@ -34,7 +35,7 @@ class _WorkspaceSelectPageState extends State<WorkspaceSelectPage> {
             const Text('marcheZ / SELECT BOX', 
               style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1B263B), fontSize: 16)),
             Text('ボックス選択', 
-              style: TextStyle(color: const Color(0xFF1B263B).withOpacity(0.5), fontSize: 10)),
+              style: TextStyle(color: const Color(0xFF1B263B).withValues(alpha: 0.5), fontSize: 10)),
           ],
         ),
       ),
@@ -162,7 +163,7 @@ class _WorkspaceSelectPageState extends State<WorkspaceSelectPage> {
             Icon(icon, color: iconColor, size: isMobile ? 24 : 28), 
             const SizedBox(height: 4),
             Text(label, style: TextStyle(color: Colors.grey, fontSize: isMobile ? 9 : 10, fontWeight: FontWeight.bold)),
-            Text(subLabel, style: TextStyle(color: Colors.grey.withOpacity(0.6), fontSize: isMobile ? 7 : 8)),
+            Text(subLabel, style: TextStyle(color: Colors.grey.withValues(alpha: 0.6), fontSize: isMobile ? 7 : 8)),
           ],
         ),
       ),
@@ -170,6 +171,7 @@ class _WorkspaceSelectPageState extends State<WorkspaceSelectPage> {
   }
 
   Widget _buildBoxCard(BuildContext context, Map<String, dynamic> data, String docId, bool isMobile) {
+    final theme = WorkspaceTheme.of(data['type'] as String?);
     return InkWell(
       onTap: () {
         Navigator.push(context, MaterialPageRoute(
@@ -177,12 +179,19 @@ class _WorkspaceSelectPageState extends State<WorkspaceSelectPage> {
         ));
       },
       child: Container(
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))]),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: theme.primary.withValues(alpha: 0.15)),
+          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+        ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(data['name'] ?? "Untitled", style: TextStyle(fontWeight: FontWeight.bold, fontSize: isMobile ? 11 : 12), textAlign: TextAlign.center), 
+            Icon(theme.boxIcon, color: theme.primary, size: isMobile ? 18 : 20),
             const SizedBox(height: 4),
+            Text(data['name'] ?? "Untitled", style: TextStyle(fontWeight: FontWeight.bold, fontSize: isMobile ? 11 : 12), textAlign: TextAlign.center), 
+            const SizedBox(height: 2),
             Text("ID: $docId", style: TextStyle(fontSize: isMobile ? 6 : 7, color: Colors.grey)), 
           ],
         ),
@@ -211,25 +220,95 @@ class _WorkspaceSelectPageState extends State<WorkspaceSelectPage> {
 
   void _showCreateDialog(BuildContext context) {
     String name = "";
-    showDialog(context: context, builder: (context) => AlertDialog(
-      title: const Text("Create BOX"),
-      content: TextField(onChanged: (v) => name = v, decoration: const InputDecoration(hintText: "BOX Name")),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-        ElevatedButton(onPressed: () async {
-          if (name.isNotEmpty && currentUser != null) {
-            final doc = FirebaseFirestore.instance.collection('groups').doc();
-            await doc.set({
-              'id': doc.id, 
-              'name': name, 
-              'memberUids': [currentUser!.uid], 
-              'ownerUid': currentUser!.uid, 
-              'createdAt': FieldValue.serverTimestamp()
-            });
-            if (mounted) Navigator.pop(context);
-          }
-        }, child: const Text("Create")),
-      ],
+    String selectedType = WorkspaceType.family; // デフォルトはFamily（先に選ばせて自己選別を促す）
+
+    showDialog(context: context, builder: (context) => StatefulBuilder(
+      builder: (context, setState) {
+        final theme = WorkspaceTheme.of(selectedType);
+        return AlertDialog(
+          title: const Text("Create BOX / BOXを作成"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "どんな用途で使いますか？",
+                  style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: WorkspaceTheme.all.map((t) {
+                    final isSelected = selectedType == t.type;
+                    return Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: InkWell(
+                          onTap: () => setState(() => selectedType = t.type),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+                            decoration: BoxDecoration(
+                              color: isSelected ? t.primary.withValues(alpha: 0.08) : Colors.grey.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isSelected ? t.primary : Colors.grey.shade300,
+                                width: isSelected ? 2 : 1,
+                              ),
+                            ),
+                            child: Column(
+                              children: [
+                                Icon(t.boxIcon, color: t.primary, size: 26),
+                                const SizedBox(height: 6),
+                                Text(t.selectorTitle, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: t.primary)),
+                                Text(t.selectorSubtitle, style: TextStyle(fontSize: 10, color: t.primary.withValues(alpha: 0.7))),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  theme.selectorDescription,
+                  style: const TextStyle(fontSize: 11, color: Colors.black54, height: 1.4),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  onChanged: (v) => name = v,
+                  decoration: const InputDecoration(hintText: "BOX Name / BOX名"),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: theme.primary),
+              onPressed: () async {
+                if (name.isNotEmpty && currentUser != null) {
+                  final createTheme = WorkspaceTheme.of(selectedType);
+                  final doc = FirebaseFirestore.instance.collection('groups').doc();
+                  await doc.set({
+                    'id': doc.id,
+                    'name': name,
+                    'type': selectedType,
+                    'sharedTitle': createTheme.defaultSharedTitle,
+                    'doneTitle': createTheme.defaultDoneTitle,
+                    'memberUids': [currentUser!.uid],
+                    'ownerUid': currentUser!.uid,
+                    'createdAt': FieldValue.serverTimestamp(),
+                  });
+                  if (mounted) Navigator.pop(context);
+                }
+              },
+              child: const Text("Create"),
+            ),
+          ],
+        );
+      },
     ));
   }
 }

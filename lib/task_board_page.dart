@@ -17,6 +17,20 @@ class ImprovedTaskBoardPage extends StatefulWidget {
 class _ImprovedTaskBoardPageState extends State<ImprovedTaskBoardPage> {
   late ConfettiController _confettiController;
 
+  // 🎉 ポイントの節目（この値を跨いだらお祝いポップアップを出す）
+  static const List<int> _milestones = [10, 30, 50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000, 10000];
+
+  // before〜after の間で跨いだ最大の節目を返す（無ければnull）
+  int? _highestMilestoneCrossed(int before, int after) {
+    int? result;
+    for (final m in _milestones) {
+      if (before < m && after >= m) {
+        result = m;
+      }
+    }
+    return result;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -498,6 +512,54 @@ class _ImprovedTaskBoardPageState extends State<ImprovedTaskBoardPage> {
     );
   }
 
+  // 🎉 ポイントの節目達成時に、画面内お祝いポップアップ＋紙吹雪を出す
+  void _showMilestoneCelebration(BuildContext context, WorkspaceTheme theme, int milestone, String memberName) {
+    // 通常の完了紙吹雪よりも派手にするため、もう一度バーストさせる
+    _confettiController.play();
+
+    final displayName = memberName.isNotEmpty ? memberName : 'You';
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        backgroundColor: Colors.white,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('🎉', style: TextStyle(fontSize: 48)),
+            const SizedBox(height: 12),
+            Text(
+              '$displayName reached $milestone${theme.pointUnitShort}!\n($milestone${theme.pointUnitShort}達成！)',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: theme.primary),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              theme.milestoneSubtitle,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 13, color: Colors.black54, height: 1.4),
+            ),
+          ],
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: theme.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+            ),
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Nice! / やったね', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDropColumn(BuildContext context, String title, String statusKey, Color themeColor, String fieldKey, bool isMobile, {String? colId, int currentPoints = 0, WorkspaceTheme? boardTheme}) {
     final theme = boardTheme ?? WorkspaceTheme.work;
     return Container(
@@ -522,7 +584,26 @@ class _ImprovedTaskBoardPageState extends State<ImprovedTaskBoardPage> {
 
           if (statusKey == 'done' && resolvedFromColId != null) {
             _confettiController.play();
-            await FirebaseFirestore.instance.collection('groups').doc(widget.groupId).collection('columns').doc(resolvedFromColId).update({'personalPoints': FieldValue.increment(dragData['taskPoints'])});
+
+            final colRef = FirebaseFirestore.instance.collection('groups').doc(widget.groupId).collection('columns').doc(resolvedFromColId);
+            final int taskPts = dragData['taskPoints'] as int? ?? 0;
+            int? crossedMilestone;
+            String memberName = '';
+
+            // 💡 増加前→増加後のポイントをトランザクションで取得し、節目を跨いだかどうかを判定します
+            await FirebaseFirestore.instance.runTransaction((tx) async {
+              final snap = await tx.get(colRef);
+              final data = snap.data() as Map<String, dynamic>? ?? {};
+              final int before = (data['personalPoints'] ?? 0) as int;
+              final int after = before + taskPts;
+              memberName = (data['name'] ?? '') as String;
+              crossedMilestone = _highestMilestoneCrossed(before, after);
+              tx.update(colRef, {'personalPoints': after});
+            });
+
+            if (crossedMilestone != null && context.mounted) {
+              _showMilestoneCelebration(context, theme, crossedMilestone!, memberName);
+            }
           }
         },
         builder: (context, _, __) => Column(

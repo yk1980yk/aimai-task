@@ -46,6 +46,9 @@ class WorkspaceTheme {
   final String selectorSubtitle;
   final String selectorDescription;
 
+  // ポイント節目達成時のお祝いポップアップのサブ文言
+  final String milestoneSubtitle;
+
   const WorkspaceTheme({
     required this.type,
     required this.primary,
@@ -67,6 +70,7 @@ class WorkspaceTheme {
     required this.selectorTitle,
     required this.selectorSubtitle,
     required this.selectorDescription,
+    required this.milestoneSubtitle,
   });
 
   static const WorkspaceTheme family = WorkspaceTheme(
@@ -94,6 +98,7 @@ class WorkspaceTheme {
     selectorTitle: 'Family',
     selectorSubtitle: '家族用',
     selectorDescription: "Turn 'please do it' into 'happy to help.'\n(「やってくれたら嬉しいな」を、みんなで叶え合う。)",
+    milestoneSubtitle: "You're doing amazing!\n(よくがんばったね！)",
   );
 
   static const WorkspaceTheme work = WorkspaceTheme(
@@ -121,6 +126,7 @@ class WorkspaceTheme {
     selectorTitle: 'Work',
     selectorSubtitle: '仕事用',
     selectorDescription: 'Stop the task tug-of-war. Make initiative visible.\n(タスクの押し付け合いをなくし、チームの自発性を可視化する。)',
+    milestoneSubtitle: 'Great contribution to the team!\n(チームへの素晴らしい貢献です！)',
   );
 
   static WorkspaceTheme of(String? type) {
